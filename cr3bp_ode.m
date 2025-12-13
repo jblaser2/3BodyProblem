@@ -16,7 +16,7 @@ function dydt = cr3bp_ode(~, y, mu, perturb_handle, eps)
     Omega_y = yy - (1-mu)*yy/r1^3 - mu*yy/r2^3;
 
     % Equations of motion in rotating frame:
-    xdd =  2*v + Omega_x;
+    xdd =  2*v + Omega_x; 
     ydd = -2*u + Omega_y;
 
     % apply optional small perturbation
