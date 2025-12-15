@@ -21,11 +21,11 @@ opts = odeset('RelTol',1e-8,'AbsTol',1e-10,'Events',@yCrossEvent);
 
 %% Define 5 interesting initial conditions (columns)
 % Small offsets from each Lagrange point
-eps = 0.01;
+eps0 = 0.01;
 
 ICs = [ ...
-    Lx(1)+eps,  Lx(2)-eps,  Lx(3)-eps,  Lx(4)+eps,  Lx(5)-eps;   % x
-    Ly(1),      Ly(2),      Ly(3),      Ly(4)-eps,  Ly(5)+eps;   % y
+    Lx(1)+eps0,  Lx(2)+eps0,  Lx(3)-eps0,  Lx(4),  Lx(5);   % x
+    Ly(1),      Ly(2),      Ly(3),      Ly(4)+eps0,  Ly(5)-eps0;   % y
     0,          0,          0,          0,          0;           % xd
     0,          0,          0,          0,          0            % yd
 ];
@@ -95,8 +95,8 @@ for k = 1:5
          'Color', colors(k,:), ...
          'DisplayName', labels{k});
 end
-xlabel('x'); ylabel('\dot{x}');
-title('Phase space: x vs \dot{x}');
+xlabel('x'); ylabel('xdot');
+title('Phase space: x vs xdot');
 grid on;
 legend('Location','best');
 
@@ -108,8 +108,8 @@ for k = 1:5
          'Color', colors(k,:), ...
          'DisplayName', labels{k});
 end
-xlabel('y'); ylabel('\dot{y}');
-title('Phase space: y vs \dot{y}');
+xlabel('y'); ylabel('ydot');
+title('Phase space: y vs ydot');
 grid on;
 legend('Location','best');
 
@@ -126,8 +126,8 @@ for k = 1:5
     plot(Traj{k}(:,1), Traj{k}(:,3), 'LineWidth',1.4);
     grid on;
     xlabel('x');
-    ylabel('\dot{x}');
-    title(['Phase Space: x vs \dot{x}  (' labels{k} ')']);
+    ylabel('xdot');
+    title(['Phase Space: x vs xdot  (' labels{k} ')']);
 
     % mark initial condition
     hold on;
@@ -139,8 +139,8 @@ for k = 1:5
     plot(Traj{k}(:,2), Traj{k}(:,4), 'LineWidth',1.4);
     grid on;
     xlabel('y');
-    ylabel('\dot{y}');
-    title(['Phase Space: y vs \dot{y}  (' labels{k} ')']);
+    ylabel('ydot');
+    title(['Phase Space: y vs ydot  (' labels{k} ')']);
 
     % mark initial condition
     hold on;
@@ -214,7 +214,7 @@ end
 
 %% Poincaré section for ONE trajectory (y = 0, ydot > 0)
 
-k = 4;   % choose trajectory (e.g. near L4)
+k = 1;   % choose trajectory (e.g. near L4)
 
 Ytraj = Traj{k};   % Nx4: [x, y, xdot, ydot]
 
@@ -246,14 +246,20 @@ figure('Name',['Poincare Section - ' labels{k}], ...
 plot(xcross, xdotcross, 'k.', 'MarkerSize',8);
 grid on;
 
-xlabel('$x$', 'Interpreter','latex');
-ylabel('$\dot{x}$', 'Interpreter','latex');
+xlabel('x');
+ylabel('xdot');
 
-title(['Poincaré Section ($y=0$, $\dot{y}>0$) -- ' labels{k}], ...
-      'Interpreter','latex');
+title(['Poincaré Section (y=0, ydot>0) -- ' labels{k}]);
+
+figure;
+plot(Ytraj(:,2)); % Plot y values over time
+xlabel('Time step');
+ylabel('y');
+title('y values over time');
+grid on;
 
 %% Choose ONE trajectory for detailed analysis
-k0 = 4;   % Near L4
+k0 = 1;   % Near L4
 Ytraj = Traj{k0};   % Nx4 [x y xdot ydot]
 ttraj = Time{k0};
 
@@ -336,3 +342,125 @@ grid on;
 xlabel('x');
 ylabel('xdot');
 title(['Poincare Section (y=0): ' labels{k0}]);
+
+%% Functions
+function [value,isterminal,direction] = yCrossEvent(~, y)
+% yCrossEvent   ODE event function used to detect y = 0 crossings
+% returns value = y. Not terminal; direction = 0 (both directions).
+    value = y(2);        % y
+    isterminal = 0;      % do not stop integration
+    direction = 0;       % detect crossings in both directions
+end
+
+function [Lx, Ly] = lagrange_points(mu)
+    fx = @(x) x ...
+        - (1-mu)*(x+mu)./abs(x+mu).^3 ...
+        - mu*(x-1+mu)./abs(x-1+mu).^3;
+
+    L1x = fzero(fx, 0.7);
+    L2x = fzero(fx, 1.2);
+    L3x = fzero(fx, -1.0);
+
+    xL4 = 0.5 - mu;
+    yL4 =  sqrt(3)/2;
+    xL5 = 0.5 - mu;
+    yL5 = -sqrt(3)/2;
+
+    Lx = [L1x; L2x; L3x; xL4; xL5];
+    Ly = [0; 0; 0; yL4; yL5];
+end
+
+function dydt = cr3bp_ode(~, y, mu, perturb_handle, eps)
+    % cr3bp_ode  Equations of motion for the planar CR3BP in rotating frame.
+    %   dydt = cr3bp_ode(t, y, mu, perturb_handle, eps)
+    %   y = [x; y; xdot; ydot]
+    %
+    %   perturb_handle is a function handle: [axp, ayp] = perturb_handle(x,y,xd,yd,mu,eps)
+    %   if no perturbation is desired, set eps = 0 or pass [] for perturb_handle.
+
+    x  = y(1); yy = y(2); u = y(3); v = y(4);
+    % distances to primaries:
+    r1 = sqrt((x + mu)^2 + yy^2);
+    r2 = sqrt((x - 1 + mu)^2 + yy^2);
+
+    % effective potential derivatives (Omega_x, Omega_y)
+    Omega_x = x - (1-mu)*(x+mu)/r1^3 - mu*(x-1+mu)/r2^3;
+    Omega_y = yy - (1-mu)*yy/r1^3 - mu*yy/r2^3;
+
+    % Equations of motion in rotating frame:
+    xdd =  2*v + Omega_x; 
+    ydd = -2*u + Omega_y;
+
+    % apply optional small perturbation
+    if nargin >= 5 && eps ~= 0 && ~isempty(perturb_handle)
+        [axp, ayp] = perturb_handle(x, yy, u, v, mu, eps);
+        xdd = xdd + axp;
+        ydd = ydd + ayp;
+    end
+
+    dydt = [u; v; xdd; ydd];
+end
+
+function C = jacobi_const(x,y,xd,yd,mu)
+% jacobi_const  Compute Jacobi constant (vectorized).
+%   C = jacobi_const(x,y,xd,yd,mu)
+%
+%   x,y,xd,yd may be scalars or column vectors of equal length.
+
+
+% Jacobi const is sort of like energy conservation. It is constant along
+% certain trajectories. A higher C means less kinetic energy available. 
+
+    r1 = sqrt((x + mu).^2 + y.^2); % The distance to the Earth
+    r2 = sqrt((x - 1 + mu).^2 + y.^2); % Distance to the moon
+    Omega = 0.5*(x.^2 + y.^2) + (1-mu)./r1 + mu./r2; % The effective potential
+    C = 2.*Omega - (xd.^2 + yd.^2); % The Jacobi constant- denoting the zero-velocity curves where 2.*Omega = C
+end
+
+function [axp, ayp] = perturb_hook(x, y, xd, yd, mu, eps)
+% perturb_hook  Example small perturbation hook.
+%   [axp, ayp] = perturb_hook(x, y, xd, yd, mu, eps)
+% Default example: small central 1/r^2 perturbation centered on the larger primary (-mu).
+% Replace this function with your desired perturbation (radiation pressure, oblateness, thrust, etc).
+
+    r1vec = [x + mu; y];
+    r1 = norm(r1vec);
+    if r1 == 0
+        axp = 0; ayp = 0; return;
+    end
+
+    accel_mag = eps / r1^2;
+    axp = -accel_mag * (r1vec(1)/r1);
+    ayp = -accel_mag * (r1vec(2)/r1);
+end
+
+function [xcross, xdotcross] = poincare_section(Y)
+% poincare_section  Find y=0 crossings with ydot > 0 (linear interpolation)
+%   [xcross, xdotcross] = poincare_section(Y)
+%   Y is Nx4 array: [x, y, xdot, ydot]
+%
+%   returns arrays of x and xdot at the crossing points.
+
+    x = Y(:,1); y = Y(:,2); xd = Y(:,3); yd = Y(:,4);
+    xcross = [];
+    xdotcross = [];
+
+    for k=1:length(y)-1
+        if (y(k) <= 0 && y(k+1) > 0) || (y(k) < 0 && y(k+1) >= 0) || (y(k) >= 0 && y(k+1) < 0)
+            % linear interpolation to find y=0 between k and k+1
+            denom = (y(k+1) - y(k));
+            if denom == 0
+                continue;
+            end
+            tfrac = -y(k) / denom;
+            x_at_cross = x(k) + tfrac*(x(k+1)-x(k));
+            xd_at_cross = xd(k) + tfrac*(xd(k+1)-xd(k));
+            yd_at_cross = yd(k) + tfrac*(yd(k+1)-yd(k));
+
+            if yd_at_cross > 0
+                xcross(end+1,1) = x_at_cross; %#ok<AGROW>
+                xdotcross(end+1,1) = xd_at_cross; %#ok<AGROW>
+            end
+        end
+    end
+end
